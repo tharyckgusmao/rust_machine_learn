@@ -1,1 +1,4 @@
 target
+studies/convert-tensor/myenv
+*.bin
+*.ot
