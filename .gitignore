@@ -3,3 +3,4 @@ studies/convert-tensor/myenv
 *.bin
 *.ot
 *.npz
+*.model
