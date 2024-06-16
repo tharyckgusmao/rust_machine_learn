@@ -31,7 +31,7 @@ fn main() -> Result<(), Error> {
     classifier.detect_multi_scale(
         &grayscale_image,
         &mut faces,
-        1.1,
+        1.4,
         3,
         0,
         Size::new(30, 30),
