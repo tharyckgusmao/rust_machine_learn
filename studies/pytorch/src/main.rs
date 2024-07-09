@@ -8,7 +8,7 @@ use tch::{
 };
 use std::str::FromStr;
 
-const BATCH_SIZE: usize = 10;
+const BATCH_SIZE: usize = 100;
 fn main() -> Result<(), Box<dyn Error>> {
     // Carregar dados de entrada (features)
 
@@ -55,6 +55,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let inputs_tensor = inputs_tensor.to_kind(tch::Kind::Float);
     let outputs_tensor = outputs_tensor.to_kind(tch::Kind::Float);
 
+    let num_samples = inputs_tensor.size()[0];
+    let num_train = ((num_samples as f64) * 0.8) as i64;
+    let train_inputs = inputs_tensor.narrow(0, 0, num_train);
+    let test_inputs = inputs_tensor.narrow(0, num_train, num_samples - num_train);
+
+    let train_outputs = outputs_tensor.narrow(0, 0, num_train);
+    let test_outputs = outputs_tensor.narrow(0, num_train, num_samples - num_train);
+
     // Definir modelo, otimizador e outros parâmetros de treinamento
     let vs = VarStore::new(tch::Device::cuda_if_available());
     let model = build_model(&vs.root());
@@ -64,23 +72,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut optimizer = config.build(&vs, 1e-3)?;
 
     // Treinamento do modelo
-    let num_batches = (inputs_tensor.size()[0] as usize) / BATCH_SIZE;
-    let epochs = 100;
+    let num_batches = (train_inputs.size()[0] as usize) / BATCH_SIZE;
+    let epochs = 1000;
     for epoch in 1..=epochs {
         let mut epoch_loss = 0.0;
         for batch_idx in 0..num_batches {
             let start_idx = batch_idx * BATCH_SIZE;
             let end_idx = (batch_idx + 1) * BATCH_SIZE;
 
-            let inputs_batch = inputs_tensor.narrow(0, start_idx as i64, BATCH_SIZE as i64);
-            let outputs_batch = outputs_tensor.narrow(0, start_idx as i64, BATCH_SIZE as i64);
+            let inputs_batch = train_inputs.narrow(0, start_idx as i64, BATCH_SIZE as i64);
+            let outputs_batch = train_outputs.narrow(0, start_idx as i64, BATCH_SIZE as i64);
 
             optimizer.zero_grad();
 
             let predicted = model.forward_t(&inputs_batch, true);
-            let loss = predicted.copy().mse_loss(&outputs_batch, Reduction::Mean);
-
-            optimizer.backward_step(&loss);
+            // let loss = predicted.copy().mse_loss(&outputs_batch, tch::Reduction::Mean);
+            let loss = predicted.binary_cross_entropy::<Tensor>(
+                &outputs_batch,
+                None,
+                Reduction::Mean
+            );
+            loss.backward();
+            optimizer.step();
             epoch_loss += loss.double_value(&[]);
         }
 
@@ -91,6 +104,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let test_accuracy = evaluate_model(&model, &inputs_tensor, &outputs_tensor)?;
     println!("Test Accuracy: {:.2}%", test_accuracy);
+
+    // Calculando a matriz de confusão
+    let (true_positives, false_positives, true_negatives, false_negatives) =
+        calculate_confusion_matrix(&model, &inputs_tensor, &outputs_tensor)?;
+    println!("True Positives: {}", true_positives);
+    println!("False Positives: {}", false_positives);
+    println!("True Negatives: {}", true_negatives);
+    println!("False Negatives: {}", false_negatives);
+
     Ok(())
 }
 
@@ -113,7 +135,45 @@ fn evaluate_model(
 fn build_model(vs: &nn::Path) -> impl ModuleT {
     nn::seq()
         .add(nn::linear(vs / "fc1", 30, 16, Default::default()))
-        .add_fn(|xs| xs.relu())
-        .add(nn::linear(vs / "fc2", 16, 1, Default::default()))
+        .add_fn(|xs: &Tensor| xs.relu())
+        .add(nn::linear(vs / "fc2", 16, 16, Default::default()))
+        .add_fn(|xs: &Tensor| xs.relu())
+        .add(nn::linear(vs / "fc3", 16, 1, Default::default()))
+
         .add_fn(|xs| xs.sigmoid())
+}
+
+fn calculate_confusion_matrix(
+    model: &impl ModuleT,
+    inputs: &Tensor,
+    targets: &Tensor
+) -> Result<(i64, i64, i64, i64), Box<dyn Error>> {
+    let predicted = model.forward_t(inputs, false);
+    let predicted_labels = predicted.gt(0.5).to_kind(tch::Kind::Int);
+
+    let true_positives = predicted_labels
+        .eq_tensor(targets)
+        .logical_and(&predicted_labels)
+        .sum(tch::Kind::Int)
+        .int64_value(&[]);
+
+    let false_positives = predicted_labels
+        .ne_tensor(targets)
+        .logical_and(&predicted_labels)
+        .sum(tch::Kind::Int)
+        .int64_value(&[]);
+
+    let true_negatives = predicted_labels
+        .eq_tensor(targets)
+        .logical_and(&predicted_labels.logical_not())
+        .sum(tch::Kind::Int)
+        .int64_value(&[]);
+
+    let false_negatives = predicted_labels
+        .ne_tensor(targets)
+        .logical_and(&predicted_labels.logical_not())
+        .sum(tch::Kind::Int)
+        .int64_value(&[]);
+
+    Ok((true_positives, false_positives, true_negatives, false_negatives))
 }
