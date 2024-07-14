@@ -16,3 +16,4 @@ Rust Machine Learning Studies repository!
 
 - [NLP/Rust-Bert](https://github.com/tharyckgusmao/rust_machine_learn/tree/main/studies/nlp)
 - [OpenCV](https://github.com/tharyckgusmao/rust_machine_learn/tree/main/studies/vision)
+- [Pytorch / NN](https://github.com/tharyckgusmao/rust_machine_learn/tree/main/studies/pytorch)
