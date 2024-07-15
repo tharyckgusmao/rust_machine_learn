@@ -167,9 +167,10 @@ pub fn iris_train() -> Result<(), Box<dyn Error>> {
 
     // Treinamento do modelo
     let num_batches = (train_inputs.size()[0] as usize) / BATCH_SIZE;
-    let epochs = 2000;
+    let epochs = 1000;
     for epoch in 1..=epochs {
         let mut epoch_loss = 0.0;
+        let mut running_accuracy = 0.0;
         for batch_idx in 0..num_batches {
             let start_idx = batch_idx * BATCH_SIZE;
             let end_idx = (batch_idx + 1) * BATCH_SIZE;
@@ -180,23 +181,30 @@ pub fn iris_train() -> Result<(), Box<dyn Error>> {
             optimizer.zero_grad();
 
             let predicted = model.forward_t(&inputs_batch, true);
+
             let loss = predicted.copy().cross_entropy_for_logits(&outputs_batch);
 
             loss.backward();
             optimizer.step();
             epoch_loss += loss.double_value(&[]);
+
+            let predicted_softmax = predicted.softmax(-1, Kind::Float);
+            let (top_p, top_class) = predicted_softmax.topk(1, -1, true, true);
+            let equals = top_class.eq_tensor(&outputs_batch.view_as(&top_class));
+
+            running_accuracy += equals.to_kind(Kind::Float).mean(Kind::Float).double_value(&[]);
         }
 
-        if epoch % 10 == 0 {
-            println!("Epoch: {}, Loss: {:.4}", epoch, epoch_loss / (num_batches as f64));
-        }
+        println!(
+            "Epoch: {}, Loss: {:.4}, Accuracy: {:.4}%",
+            epoch,
+            epoch_loss / (num_batches as f64),
+            (running_accuracy / (num_batches as f64)) * 100.0
+        );
     }
 
-    // let test_accuracy = evaluate_model(&model, &inputs_tensor, &outputs_tensor)?;
-    // println!("Test Accuracy: {:.2}%", test_accuracy);
-
-    // // Calculando a matriz de confusão
-    // print_calculate_confusion_matrix(&model, &inputs_tensor, &outputs_tensor);
+    let test_accuracy = evaluate_model(&model, &inputs_tensor, &outputs_tensor)?;
+    println!("Test Accuracy: {:.2}%", test_accuracy);
 
     // let binding = project_dir.clone().join("./binary.ot");
     // let save_model = binding.to_str().unwrap();
@@ -209,13 +217,15 @@ fn evaluate_model(
     inputs: &Tensor,
     targets: &Tensor
 ) -> Result<f64, Box<dyn Error>> {
+    // Obter as previsões do modelo
     let predicted = model.forward_t(inputs, false);
-    let predicted_labels = predicted.gt(0.5); // Limiar de decisão para classificação binária
-    let correct = predicted_labels
-        .eq_tensor(targets)
-        .to_kind(tch::Kind::Float)
-        .sum(tch::Kind::Float);
-    let accuracy = (correct.double_value(&[]) / (targets.size()[0] as f64)) * 100.0;
+
+    let predicted_softmax = predicted.softmax(-1, Kind::Float);
+    let (top_p, top_class) = predicted_softmax.topk(1, -1, true, true);
+    let equals = top_class.eq_tensor(&targets.view_as(&top_class));
+
+    let correct = equals.to_kind(Kind::Float).mean(Kind::Float).double_value(&[]);
+    let accuracy = (correct / (targets.size()[0] as f64)) * 100.0;
 
     Ok(accuracy)
 }
