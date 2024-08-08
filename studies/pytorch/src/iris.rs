@@ -189,7 +189,9 @@ pub fn iris_train() -> Result<(), Box<dyn Error>> {
             epoch_loss += loss.double_value(&[]);
 
             let predicted_softmax = predicted.softmax(-1, Kind::Float);
+
             let (top_p, top_class) = predicted_softmax.topk(1, -1, true, true);
+
             let equals = top_class.eq_tensor(&outputs_batch.view_as(&top_class));
 
             running_accuracy += equals.to_kind(Kind::Float).mean(Kind::Float).double_value(&[]);
