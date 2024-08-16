@@ -34,13 +34,13 @@ pub fn dog_test() -> Result<(), Box<dyn Error>> {
 
     let binding = project_dir.clone().join("./data/dataset-dogandcat");
 
-    let binding_train_dog = binding.clone().join("./training_set/cachorro/");
-    let binding_train_cat = binding.clone().join("./training_set/gato/");
+    let binding_train_dog = binding.clone().join("./test_set/cachorro/");
+    let binding_train_cat = binding.clone().join("./test_set/gato/");
 
     let device = Device::cuda_if_available();
     let paths = vec![binding_train_dog.to_str().unwrap(), binding_train_cat.to_str().unwrap()];
-    let dataset = ImageDataset::new(paths, device, 100);
-    let data_loader = DataLoader::new(&dataset, 100);
+    let dataset = ImageDataset::new(paths, device, 1000);
+    let data_loader = DataLoader::new(&dataset, 1000);
 
     let binding = project_dir.clone().join("./binary-catdog.ot");
     let mode_file = binding.to_str().unwrap();
@@ -67,7 +67,6 @@ pub fn dog_test() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
 pub fn dog_train() -> Result<(), Box<dyn Error>> {
     tch::manual_seed(123);
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -87,66 +86,58 @@ pub fn dog_train() -> Result<(), Box<dyn Error>> {
     let model = build_model(&vs.root(), true);
 
     let config = Adam { beta1: 0.9, beta2: 0.999, wd: 0.0001, eps: 1e-8, amsgrad: false };
-
     let mut optimizer = config.build(&vs, 1e-3)?;
 
     let epochs = 50;
     for epoch in 1..=epochs {
-        let mut epoch_loss = 0.0;
-        let mut correct_predictions = 0;
-        let mut total_samples = 0;
+        let mut running_loss = 0.0;
+        let mut running_accuracy = 0.0;
+
+        let mut total_batches = 0;
 
         while let Some((batch_images, batch_labels)) = data_loader.next_batch() {
             optimizer.zero_grad();
 
             let predicted = model.forward_t(&batch_images, true);
-
             let loss = predicted.binary_cross_entropy::<Tensor>(
                 &batch_labels.to_kind(Kind::Float),
                 None,
                 Reduction::Mean
             );
+
             loss.backward();
             optimizer.step();
-            epoch_loss += loss.double_value(&[]);
 
-            // Verifique se a perda é válida
-            if epoch_loss.is_nan() || epoch_loss.is_infinite() {
-                println!("Perda inválida detectada: {:?}", epoch_loss);
-                return Ok(());
-            }
+            running_loss += loss.double_value(&[]);
 
-            // Converte previsões para classes binárias
             let predicted_classes = predicted.gt(0.5).to_kind(Kind::Int64).to_device(device);
+            let equals = predicted_classes.eq_tensor(&batch_labels);
+            let accuracy = equals.to_kind(Kind::Float).mean(Kind::Float).double_value(&[]);
 
-            // Verifica se predicted_classes e batch_labels têm o mesmo tamanho
-            if predicted_classes.size() != batch_labels.size() {
-                println!("Tamanho de predicted_classes e batch_labels não correspondem.");
-                return Ok(());
-            }
+            running_accuracy += accuracy;
+            total_batches += 1;
 
-            // Calcula o número de previsões corretas
-            let correct = predicted_classes.eq_tensor(&batch_labels);
-            correct_predictions += correct.sum(Kind::Int64).int64_value(&[]);
-            total_samples += batch_labels.size()[0] as usize;
+            print!(
+                "\rÉPOCA {:3} - Loop {:3}: perda {:03.4} - precisão {:03.2}%",
+                epoch,
+                total_batches,
+                loss.double_value(&[]),
+                accuracy * 100.0
+            );
         }
 
-        // Reset data loader
         data_loader.reset();
-
-        // Calcula a acurácia
-        let running_accuracy = if total_samples > 0 {
-            ((correct_predictions as f64) / (total_samples as f64)) * 100.0
-        } else {
-            0.0
-        };
-
-        println!("Epoch: {}, Loss: {:.4}, Accuracy: {:.2}%", epoch, epoch_loss, running_accuracy);
+        println!(
+            "\rÉPOCA {:3} FINALIZADA: perda {:.5} - precisão {:.5}%",
+            epoch,
+            running_loss / (total_batches as f64),
+            (running_accuracy / (total_batches as f64)) * 100.0
+        );
     }
 
     let binding = project_dir.clone().join("./binary-catdog.ot");
     let save_model = binding.to_str().unwrap();
-    vs.save(save_model).unwrap();
+    vs.save(save_model)?;
 
     Ok(())
 }
@@ -183,19 +174,31 @@ fn evaluate(
     let mut correct_predictions = 0;
 
     while let Some((batch_images, batch_labels)) = data_loader.next_batch() {
+        // Move as entradas e etiquetas para o dispositivo
+        let batch_images = batch_images.to_device(device);
+        let batch_labels = batch_labels.to_device(device);
+
+        // Faz a previsão
         let predicted = model.forward_t(&batch_images, false);
-        // Calcula o número de previsões corretas
+
+        // Converte previsões para classes binárias
         let predicted_classes = predicted.gt(0.5).to_kind(Kind::Int64);
-        println!("{:?}", predicted_classes.print());
 
+        // Calcula o número de previsões corretas
         let correct = predicted_classes.eq_tensor(&batch_labels);
-
         correct_predictions += correct.sum(Kind::Int64).int64_value(&[]);
 
+        // Conta o total de amostras
         total_samples += batch_labels.size()[0] as usize;
     }
 
-    let accuracy = ((correct_predictions as f64) / (total_samples as f64)) * 100.0;
+    // Calcula a acurácia
+    let accuracy = if total_samples > 0 {
+        ((correct_predictions as f64) / (total_samples as f64)) * 100.0
+    } else {
+        0.0
+    };
+
     Ok(accuracy)
 }
 fn build_model(vs: &nn::Path, train: bool) -> impl ModuleT {
