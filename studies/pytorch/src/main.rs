@@ -4,14 +4,19 @@ pub mod iris;
 pub mod dataframe;
 pub mod iris2;
 pub mod mnist;
+pub mod dogandcat;
+pub mod imagedataset;
+pub mod dataloader;
 
 extern crate csv;
 extern crate tch;
 use std::{ env, error::Error, ops::Sub, path::PathBuf };
 use binary::{ binary_test, binary_train };
+use dogandcat::{ dog_test, dog_train };
 use iris::iris_train;
 use iris2::iris_train2;
 use mnist::{ mnist_test, mnist_train };
+
 use tch::{
     nn::{ self, adam, Adam, ModuleT, Optimizer, OptimizerConfig, VarStore },
     Reduction,
@@ -30,6 +35,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some("iris_train2") => iris_train2()?,
         Some("mnist_train") => mnist_train()?,
         Some("mnist_test") => mnist_test()?,
+        Some("catdog_train") => dog_train()?,
+        Some("catdog_test") => dog_test()?,
 
         _ => println!("Invalid argument"),
     }

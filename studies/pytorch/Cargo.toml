@@ -13,3 +13,6 @@ ndarray = "0.15"
 ndarray-csv = "0.4"
 polars = { version = "x", features = ["csv","describe","fmt","lazy","ndarray","dtype-categorical","to_dummies"]}
 minifb = "0.22"
+image = "0.24"
+rayon = "1.5"
+rand = "0.8"

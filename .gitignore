@@ -1,5 +1,6 @@
 target
 studies/convert-tensor/myenv
+studies/pytorch/data/dataset-dogandcat
 *.bin
 *.ot
 *.npz
