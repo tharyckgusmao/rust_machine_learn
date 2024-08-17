@@ -34,13 +34,14 @@ pub fn dog_test() -> Result<(), Box<dyn Error>> {
 
     let binding = project_dir.clone().join("./data/dataset-dogandcat");
 
-    let binding_train_dog = binding.clone().join("./test_set/cachorro/");
-    let binding_train_cat = binding.clone().join("./test_set/gato/");
+    let binding_train_dog = binding.clone().join("./training_set/cachorro/");
+    let binding_train_cat = binding.clone().join("./training_set/gato/");
 
     let device = Device::cuda_if_available();
+
     let paths = vec![binding_train_dog.to_str().unwrap(), binding_train_cat.to_str().unwrap()];
-    let dataset = ImageDataset::new(paths, device, 1000);
-    let data_loader = DataLoader::new(&dataset, 1000);
+    let dataset = ImageDataset::new(paths, device, 10);
+    let data_loader = DataLoader::new(&dataset, 10);
 
     let binding = project_dir.clone().join("./binary-catdog.ot");
     let mode_file = binding.to_str().unwrap();
@@ -180,7 +181,7 @@ fn evaluate(
 
         // Faz a previsão
         let predicted = model.forward_t(&batch_images, false);
-
+        println!("{:?}", predicted.print());
         // Converte previsões para classes binárias
         let predicted_classes = predicted.gt(0.5).to_kind(Kind::Int64);
 

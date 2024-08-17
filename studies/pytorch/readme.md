@@ -1,5 +1,11 @@
 binary_test
 binary_train
+mnist_test
+mnist_train
+iris_test
+iris_train
+catdog_train
+catdog_test
 
 command
 
