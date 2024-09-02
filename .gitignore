@@ -5,3 +5,7 @@ studies/pytorch/data/dataset-dogandcat
 *.ot
 *.npz
 *.model
+venv
+.pth
+tryonpython/data
+studies/pytorch/data/MNIST/raw

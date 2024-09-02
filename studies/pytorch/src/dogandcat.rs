@@ -34,14 +34,14 @@ pub fn dog_test() -> Result<(), Box<dyn Error>> {
 
     let binding = project_dir.clone().join("./data/dataset-dogandcat");
 
-    let binding_train_dog = binding.clone().join("./training_set/cachorro/");
-    let binding_train_cat = binding.clone().join("./training_set/gato/");
+    let binding_train_dog = binding.clone().join("./test_set/cachorro/");
+    let binding_train_cat = binding.clone().join("./test_set/gato/");
 
     let device = Device::cuda_if_available();
 
     let paths = vec![binding_train_dog.to_str().unwrap(), binding_train_cat.to_str().unwrap()];
-    let dataset = ImageDataset::new(paths, device, 10);
-    let data_loader = DataLoader::new(&dataset, 10);
+    let dataset = ImageDataset::new(paths, device, 90000);
+    let data_loader = DataLoader::new(&dataset, 90000);
 
     let binding = project_dir.clone().join("./binary-catdog.ot");
     let mode_file = binding.to_str().unwrap();
@@ -89,7 +89,7 @@ pub fn dog_train() -> Result<(), Box<dyn Error>> {
     let config = Adam { beta1: 0.9, beta2: 0.999, wd: 0.0001, eps: 1e-8, amsgrad: false };
     let mut optimizer = config.build(&vs, 1e-3)?;
 
-    let epochs = 50;
+    let epochs = 200;
     for epoch in 1..=epochs {
         let mut running_loss = 0.0;
         let mut running_accuracy = 0.0;

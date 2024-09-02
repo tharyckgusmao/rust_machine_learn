@@ -41,7 +41,7 @@ pub fn mnist_test() -> Result<(), Box<dyn Error>> {
     let model = build_model(&vs.root(), false);
     vs.load(mode_file).unwrap();
 
-    let image = dataset.train_images.select(0, 1);
+    let image = dataset.train_images.select(0, 5);
     let image_buffer = image.copy();
     let image = image.view([1, 1, 28, 28]);
 
