@@ -27,23 +27,23 @@ use polars::prelude::IntoLazy;
 use polars::prelude::col;
 const BATCH_SIZE: usize = 100;
 use crate::tch::IndexOp;
-pub fn dog_test() -> Result<(), Box<dyn Error>> {
+pub fn coke_test() -> Result<(), Box<dyn Error>> {
     tch::manual_seed(123);
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let project_dir = PathBuf::from(manifest_dir);
 
-    let binding = project_dir.clone().join("./data/dataset-dogandcat");
+    let binding = project_dir.clone().join("./data/dataset-cokeornot");
 
-    let binding_train_dog = binding.clone().join("./test_set/cachorro/");
-    let binding_train_cat = binding.clone().join("./test_set/gato/");
+    let binding_train_coke = binding.clone().join("./test/coke/");
+    let binding_train_other = binding.clone().join("./test/other/");
 
     let device = Device::cuda_if_available();
 
-    let paths = vec![binding_train_dog.to_str().unwrap(), binding_train_cat.to_str().unwrap()];
+    let paths = vec![binding_train_coke.to_str().unwrap(), binding_train_other.to_str().unwrap()];
     let dataset = ImageDataset::new(paths, device, 90000);
-    let data_loader = DataLoader::new(&dataset, 90000);
+    let data_loader = DataLoader::new(dataset, 90000);
 
-    let binding = project_dir.clone().join("./binary-catdog.ot");
+    let binding = project_dir.clone().join("./binary-coke.ot");
     let mode_file = binding.to_str().unwrap();
 
     let mut vs = nn::VarStore::new(device);
@@ -51,37 +51,38 @@ pub fn dog_test() -> Result<(), Box<dyn Error>> {
     let model = build_model(&vs.root(), false);
     vs.load(mode_file).unwrap();
 
-    // let (image, label) = dataset.get(1);
-    // let image_buffer = image.copy();
+    let (image, label) = dataset.get(2);
+    let image_buffer = image.copy();
 
-    // let predicted = model.forward_t(&image, false);
-    // println!("Classe prevista:\n{:?}", predicted.print());
+    let predicted = model.forward_t(&image, false);
+    println!("Classe prevista:\n{:?}", predicted.print());
 
-    // let predicted_labels = predicted.gt(0.5).to_kind(Kind::Int64); // Limiar de decisão para classificação binária
+    let predicted_labels = predicted.gt(0.5).to_kind(Kind::Int64); // Limiar de decisão para classificação binária
 
-    // println!("Classe prevista:\n{:?}", predicted_labels.print());
-    // println!("Label Correta:\n{:?}", label);
+    println!("Classe prevista:\n{:?}", predicted_labels.print());
+    println!("Label Correta:\n{:?}", label);
 
-    // display_image(&image_buffer, 64, format!("clase prevista: {}", predicted_labels.get(0)));
-    let test_accuracy = evaluate(&model, data_loader, device)?;
-    println!("Test Accuracy: {:.2}%", test_accuracy);
+    display_image(&image_buffer, 64, format!("clase prevista: {}", predicted_labels.get(0)));
+
+    // let test_accuracy = evaluate(&model, data_loader, device)?;
+    // println!("Test Accuracy: {:.2}%", test_accuracy);
 
     Ok(())
 }
-pub fn dog_train() -> Result<(), Box<dyn Error>> {
+pub fn coke_train() -> Result<(), Box<dyn Error>> {
     tch::manual_seed(123);
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let project_dir = PathBuf::from(manifest_dir);
 
-    let binding = project_dir.clone().join("./data/dataset-dogandcat");
+    let binding = project_dir.clone().join("./data/dataset-cokeornot");
 
-    let binding_train_dog = binding.clone().join("./training_set/cachorro/");
-    let binding_train_cat = binding.clone().join("./training_set/gato/");
+    let binding_train_coke = binding.clone().join("./trainning/coke/");
+    let binding_train_other = binding.clone().join("./trainning/others/");
 
     let device = Device::cuda_if_available();
-    let paths = vec![binding_train_dog.to_str().unwrap(), binding_train_cat.to_str().unwrap()];
+    let paths = vec![binding_train_coke.to_str().unwrap(), binding_train_other.to_str().unwrap()];
     let dataset = ImageDataset::new(paths, device, 9000);
-    let mut data_loader = DataLoader::new(&dataset, 9000);
+    let mut data_loader = DataLoader::new(dataset, 9000);
 
     let vs = VarStore::new(tch::Device::cuda_if_available());
     let model = build_model(&vs.root(), true);
@@ -89,7 +90,7 @@ pub fn dog_train() -> Result<(), Box<dyn Error>> {
     let config = Adam { beta1: 0.9, beta2: 0.999, wd: 0.0001, eps: 1e-8, amsgrad: false };
     let mut optimizer = config.build(&vs, 1e-3)?;
 
-    let epochs = 5;
+    let epochs = 40;
     for epoch in 1..=epochs {
         let mut running_loss = 0.0;
         let mut running_accuracy = 0.0;
@@ -136,7 +137,7 @@ pub fn dog_train() -> Result<(), Box<dyn Error>> {
         );
     }
 
-    let binding = project_dir.clone().join("./binary-catdog.ot");
+    let binding = project_dir.clone().join("./binary-coke.ot");
     let save_model = binding.to_str().unwrap();
     vs.save(save_model)?;
 

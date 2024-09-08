@@ -27,10 +27,12 @@ impl ImageDataset {
                     let path = path.as_ref().ok()?.path();
                     if
                         path.extension().and_then(|ext| ext.to_str()) == Some("jpg") ||
+                        path.extension().and_then(|ext| ext.to_str()) == Some("jpeg") ||
+                        path.extension().and_then(|ext| ext.to_str()) == Some("webp") ||
                         path.extension().and_then(|ext| ext.to_str()) == Some("png")
                     {
                         let img = image::open(&path).ok()?;
-                        let tensor = Self::transform_image(&img, device);
+                        let tensor = Self::apply_transform(&img, device);
                         let label = path
                             .file_name()
                             .and_then(|n| n.to_str())
@@ -54,27 +56,31 @@ impl ImageDataset {
 
     fn extract_label_from_filename(filename: &str) -> Option<i64> {
         println!("{:?}", filename);
-        if filename.contains("dog") {
+        if filename.contains("dog") || filename.contains("coke") {
             Some(0)
-        } else if filename.contains("cat") {
+        } else if filename.contains("cat") || filename.contains("other") {
             Some(1)
         } else {
-            None
+            Some(1)
         }
     }
 
-    fn transform_image(img: &DynamicImage, device: Device) -> Tensor {
+    pub fn apply_transform(img: &DynamicImage, device: Device) -> Tensor {
         let mut img = img.clone();
 
-        // if rand::random::<bool>() {
-        //     flip_horizontal_in_place(&mut img);
-        // }
+        let mut rng = rand::thread_rng();
 
-        // let scale = rand::thread_rng().gen_range(1.0..1.2);
-        // let (width, height) = img.dimensions();
-        // let new_width = ((width as f32) * scale) as u32;
-        // let new_height = ((height as f32) * scale) as u32;
-        // img = img.resize_exact(new_width, new_height, image::imageops::FilterType::Nearest);
+        // Flip horizontal aleatório
+        if rng.gen_bool(0.5) {
+            flip_horizontal_in_place(&mut img);
+        }
+
+        // Aplicar uma escala aleatória
+        let scale = rng.gen_range(0.8..1.2);
+        let (width, height) = img.dimensions();
+        let new_width = ((width as f32) * scale) as u32;
+        let new_height = ((height as f32) * scale) as u32;
+        img = img.resize_exact(new_width, new_height, image::imageops::FilterType::Nearest);
 
         let img = img.resize_exact(64, 64, image::imageops::FilterType::Nearest);
         let img = img.to_rgb8();
@@ -87,11 +93,20 @@ impl ImageDataset {
         tensor.to_device(device)
     }
 
+    // Atualiza uma imagem transformada no dataset
+    pub fn update_image(&mut self, index: usize, new_image: Tensor) {
+        self.images[index] = new_image;
+    }
+
     pub fn len(&self) -> usize {
         self.images.len()
     }
 
     pub fn get(&self, index: usize) -> (Tensor, i64) {
         (self.images[index].copy(), self.labels[index])
+    }
+
+    pub fn get_device(&self) -> Device {
+        self.device
     }
 }
