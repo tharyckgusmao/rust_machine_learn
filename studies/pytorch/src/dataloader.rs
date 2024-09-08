@@ -2,14 +2,14 @@ use crate::imagedataset::ImageDataset;
 use tch::Tensor;
 
 pub struct DataLoader<'a> {
-    dataset: &'a mut ImageDataset,
+    dataset: &'a ImageDataset,
     batch_size: usize,
     indices: Vec<usize>,
     current_index: usize,
 }
 
 impl<'a> DataLoader<'a> {
-    pub fn new(dataset: &'a mut ImageDataset, batch_size: usize) -> Self {
+    pub fn new(dataset: &'a ImageDataset, batch_size: usize) -> Self {
         let mut indices: Vec<usize> = (0..dataset.len()).collect();
 
         DataLoader {
@@ -19,17 +19,9 @@ impl<'a> DataLoader<'a> {
             current_index: 0,
         }
     }
-
     pub fn reset(&mut self) {
         self.current_index = 0;
-
-        for i in 0..self.dataset.len() {
-            let (image, _) = self.dataset.get(i);
-            let transformed_image = self.dataset.apply_transform(&image, self.dataset.get_device());
-            self.dataset.update_image(i, transformed_image);
-        }
     }
-
     pub fn next_batch(&mut self) -> Option<(Tensor, Tensor)> {
         if self.current_index >= self.indices.len() {
             return None;

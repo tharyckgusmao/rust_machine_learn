@@ -93,7 +93,6 @@ impl ImageDataset {
         tensor.to_device(device)
     }
 
-    // Atualiza uma imagem transformada no dataset
     pub fn update_image(&mut self, index: usize, new_image: Tensor) {
         self.images[index] = new_image;
     }
@@ -104,9 +103,5 @@ impl ImageDataset {
 
     pub fn get(&self, index: usize) -> (Tensor, i64) {
         (self.images[index].copy(), self.labels[index])
-    }
-
-    pub fn get_device(&self) -> Device {
-        self.device
     }
 }

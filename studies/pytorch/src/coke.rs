@@ -1,6 +1,6 @@
 extern crate csv;
 extern crate tch;
-use std::{ env, error::Error, ops::Sub, path::PathBuf };
+use std::{ collections::HashMap, env, error::Error, ops::Sub, path::PathBuf };
 use minifb::{ Key, Window, WindowOptions };
 use ndarray::{ s, Array };
 use polars::{
@@ -18,11 +18,7 @@ use tch::{
 };
 use std::str::FromStr;
 use polars::prelude::SerReader;
-use crate::{
-    dataloader::DataLoader,
-    imagedataset::ImageDataset,
-    utils::{ calculate_confusion_matrix, print_calculate_confusion_matrix },
-};
+use crate::{ dataloader::DataLoader, imagedataset::ImageDataset };
 use polars::prelude::IntoLazy;
 use polars::prelude::col;
 const BATCH_SIZE: usize = 100;
@@ -41,7 +37,7 @@ pub fn coke_test() -> Result<(), Box<dyn Error>> {
 
     let paths = vec![binding_train_coke.to_str().unwrap(), binding_train_other.to_str().unwrap()];
     let dataset = ImageDataset::new(paths, device, 90000);
-    let data_loader = DataLoader::new(dataset, 90000);
+    let data_loader = DataLoader::new(&dataset, 90000);
 
     let binding = project_dir.clone().join("./binary-coke.ot");
     let mode_file = binding.to_str().unwrap();
@@ -51,21 +47,25 @@ pub fn coke_test() -> Result<(), Box<dyn Error>> {
     let model = build_model(&vs.root(), false);
     vs.load(mode_file).unwrap();
 
-    let (image, label) = dataset.get(2);
-    let image_buffer = image.copy();
+    // let (image, label) = dataset.get(0);
+    // let image_buffer = image.copy();
 
-    let predicted = model.forward_t(&image, false);
-    println!("Classe prevista:\n{:?}", predicted.print());
+    // let predicted = model.forward_t(&image, false);
+    // println!("Classe prevista:\n{:?}", predicted.print());
 
-    let predicted_labels = predicted.gt(0.5).to_kind(Kind::Int64); // Limiar de decisão para classificação binária
+    // let predicted_labels = predicted.gt(0.5).to_kind(Kind::Int64); // Limiar de decisão para classificação binária
 
-    println!("Classe prevista:\n{:?}", predicted_labels.print());
-    println!("Label Correta:\n{:?}", label);
+    // println!("Classe prevista:\n{:?}", predicted_labels.print());
+    // println!("Label Correta:\n{:?}", label);
 
-    display_image(&image_buffer, 64, format!("clase prevista: {}", predicted_labels.get(0)));
+    // display_image(
+    //     &image_buffer,
+    //     64,
+    //     format!("clase prevista: {} classe correta {}", predicted_labels.get(0), label)
+    // );
 
-    // let test_accuracy = evaluate(&model, data_loader, device)?;
-    // println!("Test Accuracy: {:.2}%", test_accuracy);
+    let test_accuracy = evaluate(&model, data_loader, device)?;
+    println!("Test Accuracy: {:.2}%", test_accuracy);
 
     Ok(())
 }
@@ -82,7 +82,7 @@ pub fn coke_train() -> Result<(), Box<dyn Error>> {
     let device = Device::cuda_if_available();
     let paths = vec![binding_train_coke.to_str().unwrap(), binding_train_other.to_str().unwrap()];
     let dataset = ImageDataset::new(paths, device, 9000);
-    let mut data_loader = DataLoader::new(dataset, 9000);
+    let mut data_loader = DataLoader::new(&dataset, 9000);
 
     let vs = VarStore::new(tch::Device::cuda_if_available());
     let model = build_model(&vs.root(), true);
@@ -167,6 +167,7 @@ fn display_image(image_tensor: &Tensor, original_size: usize, title: String) {
             .expect("Falha ao atualizar o buffer");
     }
 }
+
 fn evaluate(
     model: &impl ModuleT,
     mut data_loader: DataLoader<'_>,
@@ -174,6 +175,8 @@ fn evaluate(
 ) -> Result<f64, Box<dyn std::error::Error>> {
     let mut total_samples = 0;
     let mut correct_predictions = 0;
+    let mut all_predicted = Vec::new();
+    let mut all_labels = Vec::new();
 
     while let Some((batch_images, batch_labels)) = data_loader.next_batch() {
         // Move as entradas e etiquetas para o dispositivo
@@ -182,14 +185,18 @@ fn evaluate(
 
         // Faz a previsão
         let predicted = model.forward_t(&batch_images, false);
-        println!("{:?}", predicted.print());
         // Converte previsões para classes binárias
         let predicted_classes = predicted.gt(0.5).to_kind(Kind::Int64);
+
+        // Armazena previsões e etiquetas para calcular a matriz de confusão
+        all_predicted.extend(
+            predicted_classes.to_kind(Kind::Int64).view([-1]).iter::<i64>().unwrap()
+        );
+        all_labels.extend(batch_labels.to_kind(Kind::Int64).view([-1]).iter::<i64>().unwrap());
 
         // Calcula o número de previsões corretas
         let correct = predicted_classes.eq_tensor(&batch_labels);
         correct_predictions += correct.sum(Kind::Int64).int64_value(&[]);
-
         // Conta o total de amostras
         total_samples += batch_labels.size()[0] as usize;
     }
@@ -201,8 +208,13 @@ fn evaluate(
         0.0
     };
 
+    let predicted_tensor = Tensor::from_slice(&all_predicted).view([-1]);
+    let labels_tensor = Tensor::from_slice(&all_labels).view([-1]);
+    let confusion_matrix = calculate_confusion_matrix(&predicted_tensor, &labels_tensor);
+    print_calculate_confusion_matrix(&confusion_matrix, &["coke", "other"]);
     Ok(accuracy)
 }
+
 fn build_model(vs: &nn::Path, train: bool) -> impl ModuleT {
     // output = (input - filter + 1) / stride
     // convolução 1: (28 - 3 + 1) / 1 = 26x26
@@ -255,4 +267,42 @@ fn build_model(vs: &nn::Path, train: bool) -> impl ModuleT {
         .add(linear3)
 
         .add_fn(|xs: &Tensor| xs.sigmoid())
+}
+
+fn calculate_confusion_matrix(predicted: &Tensor, labels: &Tensor) -> HashMap<(i64, i64), i64> {
+    let mut confusion_matrix = HashMap::new();
+    let predicted = predicted.to_kind(Kind::Int64).to_device(Device::Cpu);
+    let labels = labels.to_kind(Kind::Int64).to_device(Device::Cpu);
+
+    let num_classes = 2;
+    for i in 0..predicted.size()[0] {
+        let p = predicted.get(i).int64_value(&[]);
+        let l = labels.get(i).int64_value(&[]);
+        let entry = confusion_matrix.entry((l, p)).or_insert(0);
+        *entry += 1;
+    }
+
+    confusion_matrix
+}
+
+fn print_calculate_confusion_matrix(
+    confusion_matrix: &HashMap<(i64, i64), i64>,
+    class_names: &[&str]
+) {
+    let num_classes = class_names.len();
+
+    print!("Confusion Matrix:\n         ");
+    for i in 0..num_classes {
+        print!("{:<10}", class_names[i]);
+    }
+    println!();
+
+    for i in 0..num_classes {
+        print!("{:<10}", class_names[i]);
+        for j in 0..num_classes {
+            let value = confusion_matrix.get(&(i as i64, j as i64)).unwrap_or(&0);
+            print!("{:<10}", value);
+        }
+        println!();
+    }
 }
