@@ -61,7 +61,9 @@ pub fn coke_test() -> Result<(), Box<dyn Error>> {
         .add_fn(|xs: &Tensor| xs.sigmoid());
     let predicted = net2.forward_t(&image_with_batch_dim, false);
 
-    println!("Classe prevista:\n{:?}", predicted.print());
+    let predicted_labels = predicted.gt(0.5).to_kind(Kind::Int64);
+
+    predicted_labels.print();
 
     Ok(())
 }
