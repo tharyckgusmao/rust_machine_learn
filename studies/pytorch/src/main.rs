@@ -12,7 +12,7 @@ extern crate csv;
 extern crate tch;
 use std::{ env, error::Error, ops::Sub, path::PathBuf };
 use binary::{ binary_test, binary_train };
-use coke::{ coke_test, coke_train };
+use coke::{ coke_test, coke_train, coke_transfer_train };
 use dogandcat::{ dog_test, dog_train };
 use iris::iris_train;
 use iris2::iris_train2;
@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some("catdog_test") => dog_test()?,
         Some("coke_train") => coke_train()?,
         Some("coke_test") => coke_test()?,
+        Some("coke_transfer_train") => coke_transfer_train()?,
 
         _ => println!("Invalid argument"),
     }

@@ -10,7 +10,7 @@ use polars::{
 use tch::{
     data::{ self, Iter2 },
     nn::{ self, adam, Adam, ModuleT, Optimizer, OptimizerConfig, VarStore },
-    vision::{ self, dataset::Dataset, image },
+    vision::{ self, dataset::Dataset, image, imagenet, resnet },
     Device,
     Kind,
     Reduction,
@@ -25,47 +25,114 @@ const BATCH_SIZE: usize = 100;
 use crate::tch::IndexOp;
 pub fn coke_test() -> Result<(), Box<dyn Error>> {
     tch::manual_seed(123);
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
     let project_dir = PathBuf::from(manifest_dir);
 
-    let binding = project_dir.clone().join("./data/dataset-cokeornot");
+    // let dataset_path = project_dir.join("data/dataset-cokeornot/test/other/others014.png");
+    let dataset_path = project_dir.join("data/dataset-cokeornot/test/coke/coke0003.jpeg");
 
-    let binding_train_coke = binding.clone().join("./test/coke/");
-    let binding_train_other = binding.clone().join("./test/other/");
+    let model_path = project_dir.join("./binary-coke.ot");
+    println!("Caminho do modelo: {:?}", dataset_path);
+
+    println!("Caminho do modelo: {:?}", model_path);
+
+    // https://github.com/LaurentMazare/tch-rs/releases
+    let dataset = imagenet::load_image_and_resize224(dataset_path)?;
+    let image_with_batch_dim = dataset.unsqueeze(0);
+    println!("Dataset carregado: {:?}", image_with_batch_dim);
 
     let device = Device::cuda_if_available();
 
-    let paths = vec![binding_train_coke.to_str().unwrap(), binding_train_other.to_str().unwrap()];
-    let dataset = ImageDataset::new(paths, device, 90000);
-    let data_loader = DataLoader::new(&dataset, 90000);
+    let mut vs = VarStore::new(device);
+    let net = resnet::resnet18_no_final_layer(&vs.root());
 
-    let binding = project_dir.clone().join("./binary-coke.ot");
-    let mode_file = binding.to_str().unwrap();
+    vs.load(model_path.as_path()).map_err(|op| {
+        format!("Erro ao carregar o modelo: {:?}", op);
+        return op;
+    })?;
 
-    let mut vs = nn::VarStore::new(device);
+    let vs = nn::VarStore::new(tch::Device::Cpu);
 
-    let model = build_model(&vs.root(), false);
-    vs.load(mode_file).unwrap();
+    let linear = nn::linear(vs.root(), 512, 1, Default::default());
+    let net2 = nn
+        ::seq()
+        .add_fn(move |xs| net.forward_t(xs, false))
+        .add(linear)
+        .add_fn(|xs: &Tensor| xs.sigmoid());
+    let predicted = net2.forward_t(&image_with_batch_dim, false);
 
-    // let (image, label) = dataset.get(0);
-    // let image_buffer = image.copy();
+    println!("Classe prevista:\n{:?}", predicted.print());
 
-    // let predicted = model.forward_t(&image, false);
-    // println!("Classe prevista:\n{:?}", predicted.print());
+    Ok(())
+}
 
-    // let predicted_labels = predicted.gt(0.5).to_kind(Kind::Int64); // Limiar de decisão para classificação binária
+pub fn coke_transfer_train() -> Result<(), Box<dyn Error>> {
+    tch::manual_seed(123);
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
+    let project_dir = PathBuf::from(manifest_dir);
 
-    // println!("Classe prevista:\n{:?}", predicted_labels.print());
-    // println!("Label Correta:\n{:?}", label);
+    let dataset_path = project_dir.join("data/dataset-cokeornot");
+    let model_path = project_dir.join("data/resnet18.ot");
+    println!("Caminho do dataset: {:?}", dataset_path);
+    println!("Caminho do modelo: {:?}", model_path);
 
-    // display_image(
-    //     &image_buffer,
-    //     64,
-    //     format!("clase prevista: {} classe correta {}", predicted_labels.get(0), label)
-    // );
+    // Carregar o dataset
+    let dataset = imagenet::load_from_dir(dataset_path)?;
+    println!("Dataset carregado: {:?}", dataset);
 
-    let test_accuracy = evaluate(&model, data_loader, device)?;
-    println!("Test Accuracy: {:.2}%", test_accuracy);
+    let device = Device::cuda_if_available();
+
+    // Usar o mesmo VarStore para carregar e treinar o modelo
+    let mut vs = VarStore::new(device);
+    let net = resnet::resnet18_no_final_layer(&vs.root());
+
+    // Carregar o modelo salvo
+    vs.load(model_path.as_path())?;
+
+    let train_images = tch::no_grad(|| dataset.train_images.apply_t(&net, false));
+    let test_images = tch::no_grad(|| dataset.test_images.apply_t(&net, false));
+
+    // Configurar a camada linear e o otimizador
+    let linear = nn::linear(vs.root(), 512, dataset.labels, Default::default());
+    let mut sgd = nn::Sgd::default().build(&vs, 1e-3)?;
+
+    let net2 = nn
+        ::seq()
+        .add(linear)
+        .add_fn(|xs: &Tensor| xs.sigmoid());
+
+    // Treinamento
+    for epoch_idx in 1..1001 {
+        let predicted = train_images.apply(&net2);
+        let loss = predicted.binary_cross_entropy::<Tensor>(
+            &dataset.train_labels.to_kind(Kind::Float),
+            None,
+            Reduction::Mean
+        );
+        sgd.backward_step(&loss);
+
+        let predicted_labels = predicted.ge(0.5).to_kind(tch::Kind::Int64);
+
+        let correct_predictions = predicted_labels
+            .eq_tensor(&dataset.test_labels)
+            .sum(tch::Kind::Int64);
+        let accuracy =
+            (100.0 * correct_predictions.double_value(&[])) /
+            (dataset.test_labels.size()[0] as f64);
+
+        println!(
+            "Epoch {} - Loss: {:.4} - Accuracy: {:.2}%",
+            epoch_idx,
+            loss.double_value(&[]),
+            accuracy
+        );
+        // let test_accuracy = test_images.apply(&net2).accuracy_for_logits(&dataset.test_labels);
+        // println!("{} {:.2}%", epoch_idx, 100.0 * f64::try_from(test_accuracy)?);
+    }
+
+    // Salvar o modelo treinado
+    let save_model_path = project_dir.join("./binary-coke.ot");
+    vs.save(save_model_path)?;
 
     Ok(())
 }
