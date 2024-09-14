@@ -28,8 +28,8 @@ pub fn coke_test() -> Result<(), Box<dyn Error>> {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
     let project_dir = PathBuf::from(manifest_dir);
 
-    // let dataset_path = project_dir.join("data/dataset-cokeornot/test/other/others014.png");
-    let dataset_path = project_dir.join("data/dataset-cokeornot/test/coke/coke0003.jpeg");
+    let dataset_path = project_dir.join("data/dataset-cokeornot/test/others.old/others330.jpg");
+    // let dataset_path = project_dir.join("data/dataset-cokeornot/test/coke/coke0003.jpeg");
 
     let model_path = project_dir.join("./binary-coke.ot");
     println!("Caminho do modelo: {:?}", dataset_path);
