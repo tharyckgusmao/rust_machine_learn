@@ -8,11 +8,14 @@ pub mod dogandcat;
 pub mod imagedataset;
 pub mod dataloader;
 pub mod coke;
+pub mod bee;
+
 extern crate csv;
 extern crate tch;
 use std::{ env, error::Error, ops::Sub, path::PathBuf };
+use bee::{ bee_test, bee_train };
 use binary::{ binary_test, binary_train };
-use coke::{ coke_test, coke_train, coke_transfer_train };
+use coke::{ coke_test, coke_transfer_train };
 use dogandcat::{ dog_test, dog_train };
 use iris::iris_train;
 use iris2::iris_train2;
@@ -38,9 +41,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some("mnist_test") => mnist_test()?,
         Some("catdog_train") => dog_train()?,
         Some("catdog_test") => dog_test()?,
-        Some("coke_train") => coke_train()?,
+        // Some("coke_train") => coke_train()?,
         Some("coke_test") => coke_test()?,
         Some("coke_transfer_train") => coke_transfer_train()?,
+        Some("bee_train") => bee_train()?,
+        Some("bee_test") => bee_test()?,
 
         _ => println!("Invalid argument"),
     }

@@ -2,7 +2,7 @@ target
 studies/convert-tensor/myenv
 studies/pytorch/data/dataset-dogandcat
 studies/pytorch/data/dataset-cokeornot
-
+studies/pytorch/data/hymenoptera_data
 *.bin
 *.ot
 *.npz
