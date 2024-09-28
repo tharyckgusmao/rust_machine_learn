@@ -21,3 +21,5 @@ Rust Machine Learning Studies repository!
     - mnist
     - iris
     - detect dog and cat
+    - [Transfer Learning](https://github.com/tharyckgusmao/rust_machine_learn/tree/main/studies/transfer-learning)
+        ![transfer](https://github.com/user-attachments/assets/bb60bf20-a6c3-4823-9503-d9dd2ab88a78)
