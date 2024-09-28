@@ -14,7 +14,7 @@ use tch::{
     Device,
 };
 
-//credits @ramintoosi
+//credits @ramintoosi https://ramintoosi.ir
 /// This function trains the model with train and val data loaders
 pub fn train_model(
     mut dataloader_train: DataLoader,

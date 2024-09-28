@@ -1,9 +1,6 @@
 # Train a CNN in Rust
 This repository contains a CNN training and inference code in Rust using `tch-rust` crate.
 
-## Blog post
-You can find the description of this code in my [blog post](https://ramintoosi.ir/posts/2024/06/blog-post-1/).
-
 ## How to build
 
 We need to build `tch-rust`. For a full description check [tch-rust](https://github.com/LaurentMazare/tch-rs).
@@ -41,4 +38,4 @@ export LIBTORCH=/home/tharyckgusmaometzker/Documentos/projetos/pytorch/build/lib
 export LD_LIBRARY_PATH=/home/tharyckgusmaometzker/Documentos/projetos/pytorch/build/lib:$LD_LIBRARY_PATH
 
 
-LIBTORCH_BYPASS_VERSION_CHECK=true cargo run --bin pytorch binary_train
+LIBTORCH_BYPASS_VERSION_CHECK=true cargo run --bin transfer-learning
