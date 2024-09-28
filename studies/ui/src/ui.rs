@@ -26,48 +26,22 @@ use ratatui::{
     Frame,
     Terminal,
 };
-use std::{
-    error::Error,
-    f64::consts::E,
-    io,
-    rc::Rc,
-    sync::{ mpsc::{ self, Receiver }, Arc, Mutex },
-    thread::{ self, sleep },
-};
+use std::{ error::Error, f64::consts::E, io, rc::Rc, thread::{ self, sleep } };
 use crossterm::event::{ self, Event, KeyCode, KeyEventKind };
 use crossterm::terminal::{ disable_raw_mode, enable_raw_mode };
 use std::time::{ Duration, Instant };
-use color_eyre::Result;
+use color_eyre::{ owo_colors::OwoColorize, Result };
 use ratatui::prelude::Stylize;
 
-const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
+use crate::state::StateMutex;
 
-#[derive(Debug, Default, Clone)]
-pub struct NNProgress {
-    pub accuracy: Vec<(f64, f64)>,
-    pub loss: Vec<(f64, f64)>,
-}
-#[derive(Debug, Default, Clone)]
-pub struct Progress {
-    pub current_epoch: u16,
-    pub max_epoch: u16,
-    pub batch_size: u16,
-    pub max_batch: u16,
-    pub current_batch: u16,
-}
-#[derive(Debug, Default, Clone)]
-pub struct StateNN {
-    pub train_progress: NNProgress,
-    pub val_progress: NNProgress,
-    pub progress: Progress,
-    pub classes: Vec<(String, String)>,
-}
+const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
 #[derive(Debug)]
 pub struct App {
     pub state: AppState,
-    pub state_nn: Arc<Mutex<StateNN>>,
-    pub rx: Receiver<StateNN>,
+    pub state_nn: StateMutex,
+    pub scroll_position: usize,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -133,8 +107,13 @@ impl Widget for &App {
 
         let section_info = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(20), Constraint::Fill(1)].as_ref())
+            .constraints([Constraint::Length(60), Constraint::Fill(1)].as_ref())
             .split(container[1]);
+
+        let section_info_table = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
+            .split(section_info[0]);
 
         let section_axis = Layout::default()
             .direction(Direction::Horizontal)
@@ -142,11 +121,12 @@ impl Widget for &App {
             .split(section_info[1]);
 
         render_header(body[0], buf);
-        render_footer(body[2], buf);
+        // render_footer(body[2], buf);
         self.render_progress(section_progress, buf);
 
         self.render_axisx_graphs(section_axis, buf);
-        self.render_table(section_info[0], buf);
+        self.render_table_classes(section_info_table[0], buf);
+        self.render_table_history(section_info_table[1], buf);
     }
 }
 
@@ -180,20 +160,21 @@ impl App {
             .ratio(
                 (
                     calculate_percent(
-                        state_nn.progress.current_epoch,
+                        state_nn.progress.current_epoch + 1,
                         state_nn.progress.max_epoch
                     ) as f64
                 ) / 100.0
             )
             .render(area[0], buf);
+
         Gauge::default()
             .block(Block::default().borders(Borders::ALL).title("Batch Progress"))
             .gauge_style(Style::default().fg(Color::Green))
             .ratio(
                 (
                     calculate_percent(
-                        state_nn.progress.current_epoch,
-                        state_nn.progress.max_epoch
+                        state_nn.progress.current_batch + 1,
+                        state_nn.progress.max_batch
                     ) as f64
                 ) / 100.0
             )
@@ -227,7 +208,7 @@ impl App {
     ) {
         let accuracy_dataset = Dataset::default()
             .marker(symbols::Marker::Braille)
-            .style(Style::default().fg(Color::Cyan))
+            .style(Style::default().fg(Color::Green))
             .graph_type(ratatui::widgets::GraphType::Line)
             .data(accuracy);
 
@@ -242,19 +223,19 @@ impl App {
             .x_axis(
                 Axis::default()
                     .title("Epochs")
-                    .bounds([0.0, accuracy.len() as f64])
+                    .bounds([0.0, 100.0])
                     .style(Style::default().fg(Color::Gray))
             )
             .y_axis(
                 Axis::default()
                     .title("Value")
-                    .bounds([0.0, 1.0])
+                    .bounds([0.0, 100.0])
                     .style(Style::default().fg(Color::Gray))
             )
             .render(area, buf);
     }
 
-    fn render_table(&self, area: Rect, buf: &mut Buffer) {
+    fn render_table_classes(&self, area: Rect, buf: &mut Buffer) {
         let state_nn = self.state_nn.lock().unwrap();
 
         let header_style = Style::default();
@@ -274,6 +255,30 @@ impl App {
             .header(header)
             .block(title)
             .highlight_spacing(HighlightSpacing::Always)
+            .render(area, buf);
+    }
+    fn render_table_history(&self, area: Rect, buf: &mut Buffer) {
+        let state_nn = self.state_nn.lock().unwrap();
+
+        let header_style = Style::default();
+        let title = title_block("History");
+
+        let rows = state_nn.history
+            .iter()
+            .rev()
+            .map(|(class, encode)| {
+                Row::new(
+                    vec![Cell::from(format!("{class}")), Cell::from(format!("{encode}"))]
+                ).height(1)
+            });
+
+        let header = Row::new(vec![Cell::from("Info"), Cell::from("Accuracy")])
+            .style(header_style)
+            .height(1);
+
+        Table::new(rows, [Constraint::Percentage(70), Constraint::Percentage(30)])
+            .header(header)
+            .block(title)
             .render(area, buf);
     }
 }

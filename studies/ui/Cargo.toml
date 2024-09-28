@@ -1,16 +1,11 @@
 [package]
-name = "transfer-learning"
+name = "ui"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tch = "0.14.0"
-anyhow = "1.0.86"
-rand = "0.8.5"
-num-traits = "0.2.19"
-ui = { path = "../ui" }
 color-eyre = "0.6.3"
 crossterm = "0.28.1"
 ndarray = "0.15.6"
