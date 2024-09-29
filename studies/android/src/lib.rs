@@ -1,13 +1,11 @@
 // pub mod model;
 
-// use crate::model;
-// use crate::{ data::DataLoader, model::vgg };
-
 // #![cfg(target_os = "android")]
 // #![allow(non_snake_case)]
 
 use std::os::raw::{ c_char };
 use std::ffi::{ CString, CStr };
+use burn_wgpu::{ Wgpu, WgpuDevice };
 
 // fn main(image_path: &str) -> i64 {
 //     let device = Device::cuda_if_available();
@@ -27,36 +25,6 @@ use std::ffi::{ CString, CStr };
 //     i64::try_from(prediction).unwrap()
 // }
 
-// #[cfg(target_os = "android")]
-// #[allow(non_snake_case)]
-// pub mod android {
-//     extern crate jni;
-
-//     use super::*;
-//     use self::jni::JNIEnv;
-//     use self::jni::objects::{ JClass, JString };
-//     use self::jni::sys::{ jstring };
-
-//     #[no_mangle]
-//     pub unsafe extern fn Java_com_solana_mobilewalletadapter_fakedapp_RustGreetings_greeting(
-//         mut env: JNIEnv,
-//         _: JClass,
-//         java_pattern: JString
-//     ) -> jstring {
-//         // Our Java companion code might pass-in "world" as a string, hence the name.
-//         let world = rust_greeting(
-//             env.get_string(java_pattern).expect("invalid pattern string").as_ptr()
-//         );
-//         // Retake pointer so that we can use it below and allow memory to be freed when it goes out of scope.
-//         let world_ptr = CString::from_raw(world);
-//         let output = env
-//             .new_string(world_ptr.to_str().unwrap())
-//             .expect("Couldn't create java string!");
-
-//         output.into_raw()
-//     }
-// }
-
 // #[no_mangle]
 // pub extern fn rust_greeting(to: *const c_char) -> *mut c_char {
 //     let c_str = unsafe { CStr::from_ptr(to) };
@@ -68,6 +36,37 @@ use std::ffi::{ CString, CStr };
 // }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_androidrust_NativeLib_example() {
+pub extern "C" fn example() {
     println!("Hello from Rust's example function!");
+}
+
+#[cfg(target_os = "android")]
+#[allow(non_snake_case)]
+pub mod android {
+    extern crate jni;
+
+    use jni::objects::{ JObject, JValue };
+
+    use super::*;
+    use self::jni::JNIEnv;
+    use self::jni::objects::{ JClass, JString };
+
+    #[no_mangle]
+    pub unsafe extern fn Java_com_example_androidrust_NativeLib_example(
+        mut env: JNIEnv,
+        _: JClass
+    ) {
+        println!("Hello from Rust's stdout. This message is sent to /dev/null by Android.");
+        let device = WgpuDevice::default();
+        let message = format!("device available{:?}", device);
+        let tag = env.new_string("AndroidRust").unwrap();
+        let message = env.new_string(message).unwrap();
+        let class = env.find_class("android/util/Log").unwrap();
+        env.call_static_method(
+            class,
+            "d",
+            "(Ljava/lang/String;Ljava/lang/String;)I",
+            &[JValue::Object(&tag), JValue::Object(&message)]
+        ).unwrap();
+    }
 }

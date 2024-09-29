@@ -10,6 +10,7 @@ studies/pytorch/data/hymenoptera_data
 venv
 *.pth
 *.pt
+*.so
 tryonpython/data
 studies/pytorch/data/MNIST/raw
 studies/transfer-learning/data

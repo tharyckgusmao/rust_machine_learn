@@ -32,3 +32,6 @@ cargo install cargo-ndk
 
 cargo ndk -t armeabi-v7a -t arm64-v8a -o ./jniLibs build --release
 cargo ndk -t armeabi-v7a build
+
+//Header file example to C
+javac -h . NativeLib.java

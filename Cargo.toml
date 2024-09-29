@@ -1,2 +1,7 @@
 [workspace]
 members = ["studies/*"]
+
+
+exclude = [
+    "studies/android" 
+]

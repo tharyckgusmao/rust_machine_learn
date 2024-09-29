@@ -14,3 +14,8 @@ lto = true  # Enable link time optimization
 codegen-units = 1  # Reduce parallel code generation units
 panic = "abort"
 
+[dependencies]
+burn = { version = "0.14.0", features = ["wgpu"] }
+burn-wgpu = "0.14.0"
+jni = "0.21.1"
+
