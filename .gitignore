@@ -16,3 +16,5 @@ studies/pytorch/data/MNIST/raw
 studies/transfer-learning/data
 studies/transfer-learning/hymenopetera_data
 build
+.gradle
+.idea
