@@ -18,3 +18,4 @@ studies/transfer-learning/hymenopetera_data
 build
 .gradle
 .idea
+studies/burn-wgpu/data

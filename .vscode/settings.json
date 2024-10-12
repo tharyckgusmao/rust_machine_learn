@@ -1,11 +1,18 @@
 {
     "editor.formatOnSave": true,
-     "[rust]": {
+    "[rust]": {
         "editor.defaultFormatter": "jinxdash.prettier-rust"
     },
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
     ],
+    "rust-analyzer.server.extraEnv": {
+        "LIBCLANG_PATH": "/usr/lib/llvm-14/lib"
+    },
+    "terminal.integrated.env.linux": {
+        "LIBTORCH": "/home/tharyckgusmaometzker/Downloads/libtorch",
+        "LIBTORCH_BYPASS_VERSION_CHECK": 1
+    },
     "rust-analyzer.showUnlinkedFileNotification": false,
     "rust-analyzer.checkOnSave": false,
 }

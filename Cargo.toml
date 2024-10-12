@@ -1,7 +1,12 @@
 [workspace]
-members = ["studies/*"]
+members = ["studies/ui","studies/burn-wgpu"]
 
 
 exclude = [
-    "studies/android" 
+    "studies/android",
+    "studies/burn-wgpu",
+    "studies/vision",
+    "studies/pytorch",
+    "studies/transfer-learning"
+
 ]
