@@ -54,7 +54,7 @@ impl Dataset {
 
     /// Find images with specific extensions "jpg", "png", "jpeg"
     fn get_images_in_folder(dir: &Path, image_path: &mut Vec<(i64, String)>, class_idx: i64) {
-        let valid_ext = vec!["jpg", "png", "jpeg"];
+        let valid_ext = vec!["jpg", "png", "jpeg", "webp"];
 
         for file_path in read_dir(&dir).unwrap() {
             let file_path = &file_path.unwrap().path().clone();
@@ -80,11 +80,13 @@ impl Dataset {
     fn get_item(
         &self,
         idx: usize,
-        device: &LibTorchDevice
+        device: &LibTorchDevice,
+        augmentation: bool
     ) -> (Tensor<Autodiff<LibTorch>, 3>, i64) {
         let tensor: Tensor<Autodiff<LibTorch>, 3> = load_image_and_resize224(
             &self.image_path[idx].1,
-            device
+            device,
+            augmentation
         );
 
         (tensor, self.image_path[idx].0.clone())
@@ -159,7 +161,7 @@ impl Iterator for DataLoader {
         let device = LibTorchDevice::default();
 
         for i in start..end {
-            let (image_t, label) = self.dataset.get_item(i, &device);
+            let (image_t, label) = self.dataset.get_item(i, &device, self.train);
             images.push(image_t);
 
             let tensor_data = TensorData::from([label].as_slice());

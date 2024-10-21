@@ -19,3 +19,4 @@ build
 .gradle
 .idea
 studies/burn-wgpu/data
+*.pth
