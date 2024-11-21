@@ -4,7 +4,7 @@ use crate::utils::utils;
 use burn::backend::libtorch::LibTorchDevice;
 use burn::backend::{ Autodiff, LibTorch };
 use burn::module::{ AutodiffModule, Module };
-use burn::nn::loss::CrossEntropyLoss;
+use burn::nn::loss::{ BinaryCrossEntropyLoss, BinaryCrossEntropyLossConfig, CrossEntropyLoss };
 use burn::optim::{ AdamConfig, GradientsParams, Optimizer };
 use burn::prelude::Backend;
 use burn::record::{ FullPrecisionSettings, NamedMpkFileRecorder, Record, Recorder };
@@ -41,11 +41,11 @@ pub fn train_model(
     println!("model {}", model);
 
     let mut optim = config_optimizer.init();
-    let mut scheduler = utils::Scheduler::new(5, 1e-3, 0.5);
+    let mut scheduler = utils::Scheduler::new(5, 1e-4, 0.5);
 
     let total_batch_train = dataloader_train.len_batch();
     let total_batch_val = dataloader_val.len_batch();
-    let n_epochs = 30;
+    let n_epochs = 60;
 
     let mut state_nn = StateNN::default();
     state_nn.progress.max_batch = total_batch_train as u16;
@@ -65,21 +65,17 @@ pub fn train_model(
         let mut running_samples = 0;
 
         // Loop de Treinamento
-        for (i, (tensor, labels)) in (&mut dataloader_train).enumerate() {
-            let output = model.forward(tensor);
-            let loss = CrossEntropyLoss::new(None, &output.device()).forward(
-                output.clone(),
-                labels.clone()
-            );
+        for (i, (inputs, labels, boxes)) in (&mut dataloader_train).enumerate() {
+            let (loss, output, labels, accuracy) = model.forward_step(labels, inputs, &device);
 
             let grads = loss.backward();
             let grads = GradientsParams::from_grads(grads, &model);
 
             model = optim.step(scheduler.get_lr(), model, grads);
 
-            let acc = accuracy(output.clone(), labels);
-            epoch_acc_train += (acc as f64) * (output.clone().dims()[0] as f64);
-            epoch_loss_train += (loss.clone().into_scalar() as f64) * (output.dims()[0] as f64);
+            let dim = output.clone().dims()[0] as f64;
+            epoch_acc_train += (accuracy as f64) * dim;
+            epoch_loss_train += (loss.clone().into_scalar() as f64) * dim;
             running_samples += output.dims()[0];
 
             println!(
@@ -87,7 +83,7 @@ pub fn train_model(
                 e,
                 i,
                 loss.clone().into_scalar(),
-                acc
+                accuracy
             );
 
             let history = (
@@ -123,16 +119,17 @@ pub fn train_model(
         running_samples = 0;
 
         let model_valid = model.valid();
-        for (i, (tensor, labels)) in (&mut dataloader_val).enumerate() {
-            let output = model.forward(tensor);
-            let loss = CrossEntropyLoss::new(None, &output.device()).forward(
-                output.clone(),
-                labels.clone()
-            );
+        for (i, (inputs, labels, boxes)) in (&mut dataloader_val).enumerate() {
+            // let output = model.forward(tensor, true);
+            let (loss, output, labels, accuracy) = model.forward_step(labels, inputs, &device);
 
-            let acc = accuracy(output.clone(), labels);
-            epoch_acc_val += (acc as f64) * (output.clone().dims()[0] as f64);
-            epoch_loss_val += (loss.clone().into_scalar() as f64) * (output.dims()[0] as f64);
+            // CrossEntropyLoss::new(None, &output.device()).forward(output.clone(), labels.clone());
+
+            // let acc = accuracy(output.clone(), labels);
+            let dim = output.clone().dims()[0] as f64;
+
+            epoch_acc_val += (accuracy as f64) * dim;
+            epoch_loss_val += (loss.clone().into_scalar() as f64) * dim;
             running_samples += output.dims()[0];
 
             println!(
@@ -140,7 +137,7 @@ pub fn train_model(
                 e,
                 i,
                 loss.clone().into_scalar(),
-                acc
+                accuracy
             );
 
             let history = (
@@ -181,18 +178,4 @@ pub fn train_model(
 
         tx.send(state_nn.clone());
     }
-}
-
-pub fn accuracy<B: Backend>(output: Tensor<B, 2>, targets: Tensor<B, 1, Int>) -> f32 {
-    // Obtem os índices das previsões mais prováveis
-    let predictions = output.argmax(1).squeeze(1);
-
-    // Calcula o número total de previsões
-    let num_predictions = targets.shape().dims[0] as f32;
-
-    // Compara as previsões com os valores reais e conta o número de acertos
-    let num_corrects = predictions.equal(targets).int().sum().into_scalar();
-
-    // Calcula a acurácia como uma porcentagem
-    (num_corrects.elem::<f32>() / num_predictions) * 100.0
 }

@@ -6,8 +6,12 @@ export LIBTORCH=/home/tharyckgusmaometzker/Documentos/projetos/pytorch/build/lib
 export LD_LIBRARY_PATH=/home/tharyckgusmaometzker/Documentos/projetos/pytorch/build/lib:$LD_LIBRARY_PATH
 
 
-
-
-cargo run --bin burn-wgpu train 
+cargo run --bin burn-wgpu train [--preview support preview images enter to suffle] 
 cargo run --bin burn-wgpu eval 
-cargo run --bin burn-wgpu camer 
+cargo run --bin burn-wgpu camera
+
+// wip
+
+cargo run --bin burn-wgpu train_ssd 
+cargo run --bin burn-wgpu eval_sdd
+cargo run --bin burn-wgpu camera2

@@ -13,9 +13,12 @@ use burn::{
     },
     prelude::*,
     record::{ FullPrecisionSettings, NamedMpkFileRecorder, Record },
+    tensor::activation::sigmoid,
+    train::ClassificationOutput,
 };
 use burn_import::pytorch::{ LoadArgs, PyTorchFileRecorder };
 use burn::record::Recorder;
+use nn::{ loss::{ BinaryCrossEntropyLossConfig, CrossEntropyLoss }, Sigmoid };
 #[derive(Module, Debug)]
 pub struct Vgg16<B: Backend> {
     conv1: Conv2d<B>,
@@ -37,6 +40,7 @@ pub struct Vgg16<B: Backend> {
     pool: MaxPool2d,
     dropout: Dropout,
     activation: Relu,
+    activation_sig: Sigmoid,
 }
 
 impl<B: Backend> Vgg16<B> {
@@ -101,13 +105,14 @@ impl<B: Backend> Vgg16<B> {
             .init(device)
             .no_grad();
         let fc2 = LinearConfig::new(4096, 4096).init(device).no_grad();
-        let fc3 = LinearConfig::new(4096, n_classes).init(device);
+        let fc3 = LinearConfig::new(4096, n_classes).init(device).no_grad();
         // Pooling e dropout
         let pool = MaxPool2dConfig::new([2, 2]).with_strides([2, 2]).init();
         let dropout = DropoutConfig::new(0.5).init();
 
         Self {
             activation: Relu::new(),
+            activation_sig: Sigmoid::new(),
             conv1,
             conv2,
             conv3,
@@ -130,10 +135,8 @@ impl<B: Backend> Vgg16<B> {
     }
 
     /// Implementação do forward pass do modelo VGG.
-    pub fn forward(&self, x: Tensor<B, 4>) -> Tensor<B, 2> {
-        let x = x.permute([0, 3, 1, 2]); // Permutando PARA NCHW (N=Batch,  C=Channels, H=Height, W=Width)
-
-        // Aplicação das camadas convolucionais e pooling
+    pub fn forward(&self, x: Tensor<B, 4>, with_fc: bool) -> Tensor<B, 2> {
+        let x = x.permute([0, 3, 1, 2]);
         let x = self.activation.forward(self.conv1.forward(x));
         let x = self.activation.forward(self.conv2.forward(x));
         let x = self.pool.forward(x);
@@ -163,7 +166,35 @@ impl<B: Backend> Vgg16<B> {
         // Aplicação das camadas totalmente conectadas e dropout
         let x = self.dropout.forward(self.activation.forward(self.fc1.forward(x)));
         let x = self.dropout.forward(self.activation.forward(self.fc2.forward(x)));
-        self.fc3.forward(x)
+        let x = self.fc3.forward(x);
+        x
+    }
+    pub fn forward_without_fc(&self, x: Tensor<B, 4>) -> Tensor<B, 4> {
+        let x = x.permute([0, 3, 1, 2]);
+        let x = self.activation.forward(self.conv1.forward(x));
+        let x = self.activation.forward(self.conv2.forward(x));
+        let x = self.pool.forward(x);
+
+        let x = self.activation.forward(self.conv3.forward(x));
+        let x = self.activation.forward(self.conv4.forward(x));
+        let x = self.pool.forward(x);
+
+        let x = self.activation.forward(self.conv5.forward(x));
+        let x = self.activation.forward(self.conv6.forward(x));
+        let x = self.activation.forward(self.conv7.forward(x));
+        let x = self.pool.forward(x);
+
+        let x = self.activation.forward(self.conv8.forward(x));
+        let x = self.activation.forward(self.conv9.forward(x));
+        let x = self.activation.forward(self.conv10.forward(x));
+        let x = self.pool.forward(x);
+
+        let x = self.activation.forward(self.conv11.forward(x));
+        let x = self.activation.forward(self.conv12.forward(x));
+        let x = self.activation.forward(self.conv13.forward(x));
+        let x = self.pool.forward(x);
+
+        return x;
     }
     pub fn new_with(n_classes: usize, device: &B::Device, args_path: PathBuf) -> Self {
         let recorder = NamedMpkFileRecorder::<FullPrecisionSettings>::new();
@@ -171,6 +202,8 @@ impl<B: Backend> Vgg16<B> {
         let mut model = Self::new(n_classes, device)
             .load_file(args_path.clone(), &recorder, &device)
             .unwrap();
+        model.fc1 = LinearConfig::new(512 * 7 * 7, 4096).init(device);
+        model.fc2 = LinearConfig::new(4096, 4096).init(device);
         model.fc3 = LinearConfig::new(4096, n_classes).init(device);
         // println!("{:?}", model);
         // let load_args = LoadArgs::new(args_path.clone().into())
@@ -216,7 +249,7 @@ impl<B: Backend> Vgg16<B> {
 
         return model;
     }
-    pub fn new_with_pretreinned(n_classes: usize, device: &B::Device, args_path: PathBuf) -> Self {
+    pub fn new_with_pretrained(n_classes: usize, device: &B::Device, args_path: PathBuf) -> Self {
         // let recorder = NamedMpkFileRecorder::<FullPrecisionSettings>::new();
 
         let record: Vgg16Record<B> = NamedMpkFileRecorder::<FullPrecisionSettings>
@@ -227,5 +260,66 @@ impl<B: Backend> Vgg16<B> {
         let mut model = Self::new(n_classes, device).load_record(record);
 
         return model;
+    }
+    pub fn forward_step(
+        &self,
+        labels: Tensor<B, 1, Int>,
+        inputs: Tensor<B, 4>,
+        device: &B::Device
+    ) -> (Tensor<B, 1>, Tensor<B, 2>, Tensor<B, 1, Int>, f32) {
+        let output = self.forward(inputs.clone(), true);
+
+        let accuracy = Self::accuracy(output.clone(), labels.clone());
+
+        let loss = CrossEntropyLoss::new(None, &output.device()).forward(
+            output.clone(),
+            labels.clone()
+        );
+
+        (loss, output, labels, accuracy)
+    }
+    pub fn forward_step_sigmoid(
+        &self,
+        labels: Tensor<B, 1, Int>,
+        inputs: Tensor<B, 4>,
+        device: &B::Device
+    ) -> (Tensor<B, 1>, Tensor<B, 2>, Tensor<B, 1, Int>, f32) {
+        let output = self.forward(inputs.clone(), true);
+
+        let accuracy = Self::accuracy(output.clone(), labels.clone());
+
+        let loss_func = BinaryCrossEntropyLossConfig::new()
+            .with_smoothing(None)
+            .with_logits(true)
+            .init(device);
+
+        let labels_2d = labels.clone().unsqueeze_dim(1);
+
+        let loss = loss_func.forward(output.clone(), labels_2d.clone());
+        (loss, output, labels, accuracy)
+    }
+
+    pub fn accuracy_binary(output: Tensor<B, 2>, targets: Tensor<B, 1, Int>) -> f32 {
+        let output = sigmoid(output);
+
+        let predictions: Tensor<B, 1, Int> = output.greater_elem(0.5).int().squeeze(1);
+
+        let num_predictions: usize = targets.dims().iter().product();
+        let num_corrects = predictions.equal(targets).int().sum().into_scalar();
+
+        (num_corrects.elem::<f32>() / (num_predictions as f32)) * 100.0
+    }
+    pub fn accuracy(output: Tensor<B, 2>, targets: Tensor<B, 1, Int>) -> f32 {
+        // Obtem os índices das previsões mais prováveis
+        let predictions = output.argmax(1).squeeze(1);
+
+        // Calcula o número total de previsões
+        let num_predictions = targets.shape().dims[0] as f32;
+
+        // Compara as previsões com os valores reais e conta o número de acertos
+        let num_corrects = predictions.equal(targets).int().sum().into_scalar();
+
+        // Calcula a acurácia como uma porcentagem
+        (num_corrects.elem::<f32>() / num_predictions) * 100.0
     }
 }

@@ -18,10 +18,12 @@ pub fn load_image_and_resize224<B: Backend>(
     path: &String,
     device: &Device<B>,
     augmentation: bool
-) -> Tensor<B, 3> {
+) -> (Tensor<B, 3>, (u32, u32)) {
+    // println!("{:?}", path);
     let img = image::open(&path).ok().unwrap();
+    let original_size = img.dimensions();
     let tensor = apply_transform(&img, device, augmentation);
-    return tensor;
+    return (tensor, original_size);
 }
 pub fn load_buffer_image_and_resize224<B: Backend>(
     buffer: DynamicImage,
@@ -56,6 +58,8 @@ pub fn apply_transform<B: Backend>(
         let new_w = ((w as f32) * scale) as u32;
         let new_h = ((h as f32) * scale) as u32;
         img = img.resize_exact(new_w, new_h, image::imageops::FilterType::Nearest);
+
+        //cutout
 
         let cutout_size = rng.gen_range(0.1..0.3);
         let cutout_w = ((w as f32) * cutout_size) as u32;
