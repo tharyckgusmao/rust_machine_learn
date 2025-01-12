@@ -23,3 +23,6 @@ Rust Machine Learning Studies repository!
     - detect dog and cat
     - [Transfer Learning](https://github.com/tharyckgusmao/rust_machine_learn/tree/main/studies/transfer-learning)
         ![transfer](https://github.com/user-attachments/assets/bb60bf20-a6c3-4823-9503-d9dd2ab88a78)
+ - [Burn / pytorch / transfer learning](https://github.com/tharyckgusmao/rust_machine_learn/tree/main/studies/burn-wgpu)
+        ![preview](https://github.com/user-attachments/assets/4fa0e64c-f1da-4de6-b535-aa25ea371d16)
+
